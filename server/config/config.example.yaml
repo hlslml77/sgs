@@ -1,0 +1,51 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "debug" # debug, release, test
+
+database:
+  host: "localhost"
+  port: 3306
+  user: "sanguo_user"
+  password: "your_password_here"
+  dbname: "sanguo_strategy"
+  max_open_conns: 25
+  max_idle_conns: 5
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+
+game:
+  # 房间配置
+  max_rooms: 1000
+  max_players_per_room: 6
+  min_players_per_room: 2
+  room_timeout_minutes: 30
+  
+  # 游戏配置
+  max_rounds: 15
+  turn_time_seconds: 60
+  prepare_time_seconds: 120
+  
+  # 匹配配置
+  matchmaking_timeout_seconds: 60
+  rank_difference_threshold: 500
+
+jwt:
+  secret_key: "your-super-secret-jwt-key-change-this"
+  token_expire_hours: 168 # 7 days
+
+steam:
+  enabled: false
+  app_id: 0
+  api_key: "your_steam_api_key"
+
+logging:
+  level: "info" # debug, info, warn, error
+  output: "stdout" # stdout, file
+  file_path: "logs/server.log"
+
