@@ -38,6 +38,14 @@ namespace SanguoStrategy.UI
         
         private ApiClient apiClient;
         
+        private void Awake()
+        {
+            // ⚡ 先修复输入系统（确保 GraphicRaycaster 和 EventSystem 存在）
+            var fixer = gameObject.AddComponent<RuntimeInputFixer>();
+            fixer.FixInputSystem();
+            Destroy(fixer); // 修复后移除组件
+        }
+        
         private void Start()
         {
             InitializeButtons();
