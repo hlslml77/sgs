@@ -11,6 +11,9 @@ namespace SanguoStrategy.Network
 {
     /// <summary>
     /// 网络管理器 - 处理与服务器的 WebSocket 连接
+    /// 自动检测并使用最佳连接方式：
+    /// - 如果有 WebSocket-Sharp: 使用原生 WebSocket
+    /// - 如果没有: 使用 SimpleWebSocketClient 后备方案
     /// </summary>
     public class NetworkManager : MonoBehaviour
     {
@@ -19,20 +22,21 @@ namespace SanguoStrategy.Network
         // 服务器配置
         private string serverUrl = "ws://localhost:8080/ws";
         
-        // 在缺失 WebSocketSharp 的情况下，改为对象引用并在运行时报错提示
 #if WEBSOCKET_SHARP
         private WebSocket webSocket;
+        private bool useNativeWebSocket = true;
 #else
-        private object webSocket;
+        private bool useNativeWebSocket = false;
 #endif
+        
+        // 后备客户端组件（动态添加）
+        private MonoBehaviour simpleClientComponent;
         private bool isConnected = false;
 
         // 事件
-#pragma warning disable 0067 // 事件声明但未使用（这些事件在条件编译块中使用）
         public event Action OnConnected;
         public event Action OnDisconnected;
         public event Action<string> OnMessageReceived;
-#pragma warning restore 0067
         public event Action<string> OnError;
         
         /// <summary>
@@ -70,42 +74,118 @@ namespace SanguoStrategy.Network
             try
             {
 #if WEBSOCKET_SHARP
+                Debug.Log("🚀 使用 WebSocket-Sharp 连接到服务器...");
                 webSocket = new WebSocket(serverUrl);
 
                 webSocket.OnOpen += (sender, e) =>
                 {
                     isConnected = true;
-                    Debug.Log("Connected to server");
+                    Debug.Log("✅ 已连接到服务器 (WebSocket-Sharp)");
                     OnConnected?.Invoke();
                 };
 
                 webSocket.OnMessage += (sender, e) =>
                 {
-                    Debug.Log($"Received message: {e.Data}");
+                    Debug.Log($"📨 收到消息: {e.Data}");
                     OnMessageReceived?.Invoke(e.Data);
                 };
 
                 webSocket.OnError += (sender, e) =>
                 {
-                    Debug.LogError($"WebSocket error: {e.Message}");
+                    Debug.LogError($"❌ WebSocket 错误: {e.Message}");
                     OnError?.Invoke(e.Message);
                 };
 
                 webSocket.OnClose += (sender, e) =>
                 {
                     isConnected = false;
-                    Debug.Log("Disconnected from server");
+                    Debug.Log("🔌 已断开服务器连接");
                     OnDisconnected?.Invoke();
                 };
 
                 webSocket.Connect();
 #else
-                Debug.LogError("WebSocketSharp 未集成：请导入 websocket-sharp.dll 或定义编译符号 WEBSOCKET_SHARP。");
+                Debug.LogWarning("⚠️ WebSocket-Sharp 未安装，使用后备连接方式...");
+                Debug.LogWarning("💡 建议：使用 Unity 菜单「三国策略 -> 网络设置向导」安装 WebSocket-Sharp 以获得最佳性能");
+                
+                // 使用简单客户端作为后备（通过反射避免编译时依赖）
+                if (simpleClientComponent == null)
+                {
+                    GameObject clientObj = new GameObject("SimpleWebSocketClient");
+                    clientObj.transform.SetParent(transform);
+                    
+                    // 通过类型名称动态添加组件
+                    var clientType = System.Type.GetType("SanguoStrategy.Network.SimpleWebSocketClient");
+                    if (clientType != null)
+                    {
+                        simpleClientComponent = (MonoBehaviour)clientObj.AddComponent(clientType);
+                        
+                        // 使用反射订阅事件
+                        var onConnectedEvent = clientType.GetEvent("OnConnected");
+                        var onDisconnectedEvent = clientType.GetEvent("OnDisconnected");
+                        var onMessageReceivedEvent = clientType.GetEvent("OnMessageReceived");
+                        var onErrorEvent = clientType.GetEvent("OnError");
+                        
+                        if (onConnectedEvent != null)
+                        {
+                            onConnectedEvent.AddEventHandler(simpleClientComponent, (Action)(() =>
+                            {
+                                isConnected = true;
+                                Debug.Log("✅ 已连接到服务器 (后备模式)");
+                                OnConnected?.Invoke();
+                            }));
+                        }
+                        
+                        if (onDisconnectedEvent != null)
+                        {
+                            onDisconnectedEvent.AddEventHandler(simpleClientComponent, (Action)(() =>
+                            {
+                                isConnected = false;
+                                Debug.Log("🔌 已断开服务器连接");
+                                OnDisconnected?.Invoke();
+                            }));
+                        }
+                        
+                        if (onMessageReceivedEvent != null)
+                        {
+                            onMessageReceivedEvent.AddEventHandler(simpleClientComponent, (Action<string>)((msg) =>
+                            {
+                                Debug.Log($"📨 收到消息: {msg}");
+                                OnMessageReceived?.Invoke(msg);
+                            }));
+                        }
+                        
+                        if (onErrorEvent != null)
+                        {
+                            onErrorEvent.AddEventHandler(simpleClientComponent, (Action<string>)((error) =>
+                            {
+                                Debug.LogError($"❌ 连接错误: {error}");
+                                OnError?.Invoke(error);
+                            }));
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError("❌ 无法找到 SimpleWebSocketClient 类型");
+                        OnError?.Invoke("SimpleWebSocketClient not found");
+                        return;
+                    }
+                }
+                
+                // 调用 Connect 方法
+                if (simpleClientComponent != null)
+                {
+                    var connectMethod = simpleClientComponent.GetType().GetMethod("Connect");
+                    if (connectMethod != null)
+                    {
+                        connectMethod.Invoke(simpleClientComponent, new object[] { serverUrl });
+                    }
+                }
 #endif
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Failed to connect: {ex.Message}");
+                Debug.LogError($"❌ 连接失败: {ex.Message}");
                 OnError?.Invoke(ex.Message);
             }
         }
@@ -115,17 +195,46 @@ namespace SanguoStrategy.Network
         /// </summary>
         public void Disconnect()
         {
+#if WEBSOCKET_SHARP
             if (webSocket != null && isConnected)
             {
-                
-#if WEBSOCKET_SHARP
                 webSocket.Close();
-#endif
                 webSocket = null;
                 isConnected = false;
             }
+#else
+            if (simpleClientComponent != null)
+            {
+                var disconnectMethod = simpleClientComponent.GetType().GetMethod("Disconnect");
+                if (disconnectMethod != null)
+                {
+                    disconnectMethod.Invoke(simpleClientComponent, null);
+                }
+                isConnected = false;
+            }
+#endif
         }
 
+        /// <summary>
+        /// 检查是否已连接
+        /// </summary>
+        public bool IsConnected()
+        {
+            return isConnected;
+        }
+        
+        /// <summary>
+        /// 获取连接类型
+        /// </summary>
+        public string GetConnectionType()
+        {
+#if WEBSOCKET_SHARP
+            return "WebSocket-Sharp (推荐)";
+#else
+            return "后备模式 (建议安装 WebSocket-Sharp)";
+#endif
+        }
+        
         /// <summary>
         /// 发送消息
         /// </summary>
@@ -146,11 +255,19 @@ namespace SanguoStrategy.Network
 
             string json = JsonConvert.SerializeObject(message);
 #if WEBSOCKET_SHARP
-            (webSocket as WebSocket)?.Send(json);
+            webSocket?.Send(json);
+            Debug.Log($"📤 发送消息 (WebSocket): {json}");
 #else
-            Debug.LogWarning($"发送失败（未集成 WebSocketSharp）：{json}");
+            if (simpleClientComponent != null)
+            {
+                var sendMethod = simpleClientComponent.GetType().GetMethod("Send");
+                if (sendMethod != null)
+                {
+                    sendMethod.Invoke(simpleClientComponent, new object[] { json });
+                    Debug.Log($"📤 发送消息 (后备模式): {json}");
+                }
+            }
 #endif
-            Debug.Log($"Sent message: {json}");
         }
 
         /// <summary>

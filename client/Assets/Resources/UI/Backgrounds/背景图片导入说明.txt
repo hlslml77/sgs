@@ -1,0 +1,62 @@
+==============================================
+三国策略游戏 - 背景图片导入说明
+==============================================
+
+📁 目录说明
+-----------
+将背景图片放入此目录：
+client/Assets/Resources/UI/Backgrounds/
+
+🎨 需要的背景图片
+--------------
+1. MainMenu.jpg (或 .png)      - 主菜单背景
+2. Lobby.jpg (或 .png)         - 房间列表背景
+3. HeroSelection.jpg (或 .png) - 英雄选择背景
+4. MapEditor.jpg (或 .png)     - 地图编辑器背景
+
+📐 推荐尺寸
+----------
+- 分辨率: 1920x1080 或更高
+- 格式: JPG (文件小) 或 PNG (质量高)
+- 文件大小: 建议每张不超过2MB
+
+⚙️ Unity导入设置
+----------------
+在Unity中选中背景图片后，在Inspector面板设置：
+
+1. Texture Type: Sprite (2D and UI)
+2. Sprite Mode: Single
+3. Pixels Per Unit: 100
+4. Max Size: 2048
+5. Compression: High Quality
+6. Format: Automatic
+
+重要：修改后点击 [Apply] 按钮！
+
+🎮 如何测试背景
+--------------
+1. 将图片放入此目录
+2. 在Unity中刷新资源 (Ctrl+R)
+3. 选中图片，按上述设置修改
+4. 运行 "三国策略 → 场景设置向导"
+5. 生成对应场景，查看背景效果
+
+💡 提示
+-------
+- 如果背景图没有显示，检查文件名是否正确
+- 背景会以半透明方式显示，确保UI清晰
+- 可以使用AI生成工具创建三国风格背景
+- 推荐使用古代中国、战争场景、城池等主题
+
+🔍 获取免费素材
+--------------
+- Pixabay: https://pixabay.com/
+- Unsplash: https://unsplash.com/
+- OpenGameArt: https://opengameart.org/
+
+搜索关键词：
+- Three Kingdoms, Ancient China, War, Battle
+- 三国, 古代中国, 战争, 城池
+
+==============================================
+

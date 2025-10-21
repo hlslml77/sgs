@@ -4,6 +4,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using TMPro;
+using UnityEngine.TextCore.LowLevel;
 
 /// <summary>
 /// 商业级场景UI生成向导
@@ -12,8 +13,9 @@ using TMPro;
 public class SceneSetupWizard : EditorWindow
 {
     private Vector2 scrollPosition;
-    private bool[] sceneStatus = new bool[5];
-    private Font chineseFont;
+    private bool[] sceneStatus = new bool[6]; // 增加到6个场景（包含登录）
+    private Font chineseFont; // 旧版UI Text使用
+    private TMP_FontAsset tmpChineseFont; // TextMeshPro使用
 
     [MenuItem("三国策略/场景设置向导")]
     public static void ShowWindow()
@@ -28,47 +30,107 @@ public class SceneSetupWizard : EditorWindow
         LoadChineseFont();
     }
 
+    void LoadTMPChineseFont()
+    {
+        // 尝试加载生成的 TMP 中文字体
+        string[] possiblePaths = new string[]
+        {
+            "Assets/Fonts/TMP/SGSA_ChineseFont.asset",  // 优先路径（与UltimateFontFixer一致）
+            "Assets/Resources/Fonts/SGSA_ChineseFont.asset",
+            "Assets/TextMesh Pro/Resources/Fonts & Materials/SGSA_ChineseFont.asset",
+            "Assets/Resources/SGSA_ChineseFont.asset"
+        };
+        
+        foreach (string path in possiblePaths)
+        {
+            tmpChineseFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(path);
+            if (tmpChineseFont != null)
+            {
+                Debug.Log($"✅ 成功加载TMP中文字体: {path}");
+                return;
+            }
+        }
+        
+        Debug.LogWarning("⚠️ 未找到TMP中文字体，请先运行：工具 → ⚡ 终极字体修复（推荐）");
+    }
+
     void LoadChineseFont()
     {
-        // 尝试从EditorPrefs加载保存的字体设置
+        // 首先尝试加载 TMP 中文字体（优先）
+        LoadTMPChineseFont();
+        
+        // 方法1：尝试从EditorPrefs加载保存的字体设置
         if (EditorPrefs.HasKey("ChineseFont_Name"))
         {
             bool isSystemFont = EditorPrefs.GetBool("ChineseFont_IsSystemFont", true);
             if (isSystemFont)
             {
                 string fontName = EditorPrefs.GetString("ChineseFont_Name", "Microsoft YaHei");
-                chineseFont = Font.CreateDynamicFontFromOSFont(fontName, 16);
+                try
+                {
+                    chineseFont = Font.CreateDynamicFontFromOSFont(fontName, 14);
+                    if (chineseFont != null && !string.IsNullOrEmpty(chineseFont.name))
+                    {
+                        Debug.Log($"✅ 从设置加载字体: {fontName}");
+                        return;
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"加载保存的字体失败: {ex.Message}");
+                }
             }
             else
             {
                 string fontPath = EditorPrefs.GetString("ChineseFont_Path", "");
                 chineseFont = Resources.Load<Font>(fontPath);
-            }
-        }
-
-        // 如果没有保存的设置，尝试加载系统字体
-        if (chineseFont == null)
-        {
-            string[] fontNames = { "Microsoft YaHei", "SimHei", "Arial Unicode MS" };
-            foreach (string name in fontNames)
-            {
-                try
+                if (chineseFont != null)
                 {
-                    Font font = Font.CreateDynamicFontFromOSFont(name, 16);
-                    if (font != null)
-                    {
-                        chineseFont = font;
-                        Debug.Log($"✅ 自动加载中文字体: {name}");
-                        break;
-                    }
+                    Debug.Log($"✅ 从Resources加载字体: {fontPath}");
+                    return;
                 }
-                catch { }
             }
         }
 
-        if (chineseFont == null)
+        // 方法2：尝试多个系统字体
+        string[] fontNames = { 
+            "msyh.ttc",      // Microsoft YaHei 文件名
+            "msyhbd.ttc",    // Microsoft YaHei Bold
+            "simhei.ttf",    // SimHei
+            "simsun.ttc",    // SimSun
+            "Microsoft YaHei", 
+            "SimHei", 
+            "Arial Unicode MS",
+            "微软雅黑",
+            "黑体"
+        };
+        
+        foreach (string name in fontNames)
         {
-            Debug.LogWarning("⚠️ 未找到中文字体，文字可能显示为乱码。请运行：三国策略 → 修复中文字体显示");
+            try
+            {
+                Font font = Font.CreateDynamicFontFromOSFont(name, 14);
+                if (font != null && !string.IsNullOrEmpty(font.name))
+                {
+                    // 验证字体是否真的可用
+                    chineseFont = font;
+                    Debug.Log($"✅ 成功加载系统字体: {name} (实际名称: {font.name})");
+                    return;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                // 继续尝试下一个
+                Debug.Log($"尝试字体 {name} 失败: {ex.Message}");
+            }
+        }
+
+        // 方法3：使用Unity内置的Arial (不支持中文，但至少不会崩溃)
+        chineseFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        if (chineseFont != null)
+        {
+            Debug.LogWarning("⚠️ 未找到中文字体，使用Arial字体。中文可能显示为方块。");
+            Debug.LogWarning("⚠️ 请运行：三国策略 → 修复中文字体显示");
         }
     }
 
@@ -77,60 +139,142 @@ public class SceneSetupWizard : EditorWindow
         scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
 
         GUILayout.Space(10);
-        EditorGUILayout.LabelField("🎨 三国策略 - 场景UI生成器", EditorStyles.boldLabel);
         
-        // 显示字体状态
+        // 创建支持中文的样式
+        var titleStyle = new GUIStyle(EditorStyles.boldLabel);
+        titleStyle.fontSize = 16;
+        titleStyle.alignment = TextAnchor.MiddleCenter;
         if (chineseFont != null)
         {
-            EditorGUILayout.HelpBox(
-                "✅ 中文字体已就绪！生成的场景将正确显示中文。\n" +
-                $"当前字体: {chineseFont.name}", 
-                MessageType.Info);
+            titleStyle.font = chineseFont;
+        }
+        
+        var labelStyle = new GUIStyle(EditorStyles.label);
+        labelStyle.fontSize = 12;
+        labelStyle.wordWrap = true;
+        if (chineseFont != null)
+        {
+            labelStyle.font = chineseFont;
+        }
+        
+        var buttonStyle = new GUIStyle(GUI.skin.button);
+        buttonStyle.fontSize = 12;
+        if (chineseFont != null)
+        {
+            buttonStyle.font = chineseFont;
+        }
+        
+        var bigButtonStyle = new GUIStyle(GUI.skin.button);
+        bigButtonStyle.fontSize = 14;
+        bigButtonStyle.fontStyle = FontStyle.Bold;
+        if (chineseFont != null)
+        {
+            bigButtonStyle.font = chineseFont;
+        }
+        
+        // 标题
+        GUILayout.Label("🎨 三国策略 - 场景UI生成器", titleStyle);
+        GUILayout.Space(10);
+        
+        // 显示字体状态和调试信息
+        if (chineseFont != null)
+        {
+            GUILayout.Label("✅ 中文字体已就绪！", labelStyle);
+            GUILayout.Label($"字体名称: {chineseFont.name}", labelStyle);
+            GUILayout.Label($"字体大小: {chineseFont.fontSize}", labelStyle);
+            GUILayout.Label($"是否动态字体: {chineseFont.dynamic}", labelStyle);
+            
+            if (GUILayout.Button("重新加载字体", buttonStyle, GUILayout.Height(25)))
+            {
+                chineseFont = null;
+                LoadChineseFont();
+            }
         }
         else
         {
-            EditorGUILayout.HelpBox(
-                "⚠️ 未检测到中文字体，文字可能显示为方块。\n" +
-                "点击下方按钮修复字体问题。", 
-                MessageType.Warning);
+            GUILayout.Label("⚠️ 未检测到中文字体，文字可能显示为方块", labelStyle);
+            GUILayout.Label("DEBUG: chineseFont 是 null", labelStyle);
             
-            if (GUILayout.Button("🔧 打开字体修复工具", GUILayout.Height(30)))
+            if (GUILayout.Button("🔧 重新尝试加载字体", buttonStyle, GUILayout.Height(30)))
             {
-                ChineseFontFixer.ShowWindow();
+                LoadChineseFont();
             }
+            
         }
         
-        EditorGUILayout.HelpBox(
-            "此工具会为场景添加完整的商业化UI设计：\n" +
-            "• 现代渐变背景\n" +
-            "• 卡片式面板布局\n" +
-            "• 带图标的按钮\n" +
-            "• 自动应用中文字体", 
-            MessageType.Info);
+        GUILayout.Space(10);
+        
+        // 说明文字
+        GUILayout.Label("此工具会为场景添加完整的商业化UI设计：", labelStyle);
+        GUILayout.Label("• 现代渐变背景（支持自定义背景图）", labelStyle);
+        GUILayout.Label("• 卡片式面板布局", labelStyle);
+        GUILayout.Label("• 带图标的按钮", labelStyle);
+        GUILayout.Label("• 自动应用中文字体", labelStyle);
+        
+        GUILayout.Space(10);
+        
+        // TextMeshPro 中文字体处理
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        GUILayout.Label("📝 TextMeshPro 中文字体", EditorStyles.boldLabel);
+        
+        var tmpFont = FindTMPChineseFont();
+        if (tmpFont != null)
+        {
+            GUILayout.Label($"✅ 已找到TMP中文字体: {tmpFont.name}", labelStyle);
+            
+            if (GUILayout.Button("🔄 更新所有场景的TMP字体", buttonStyle, GUILayout.Height(30)))
+            {
+                ApplyTMPFontToAllScenes(tmpFont);
+            }
+        }
+        else
+        {
+            GUILayout.Label("⚠️ 未找到TMP中文字体！游戏运行时中文会显示为方块", labelStyle);
+            
+            if (GUILayout.Button("🚀 立即生成TMP中文字体", bigButtonStyle, GUILayout.Height(35)))
+            {
+                GenerateTMPChineseFont();
+            }
+            
+            GUILayout.Label("提示：生成字体需要1-2分钟，请耐心等待", labelStyle);
+        }
+        
+        EditorGUILayout.EndVertical();
+        
+        GUILayout.Space(10);
+        
+        // 背景图片管理按钮
+        if (GUILayout.Button("🎨 背景图片管理器", buttonStyle, GUILayout.Height(30)))
+        {
+            BackgroundImageHelper.ShowWindow();
+        }
 
         GUILayout.Space(20);
 
-        DrawSection("步骤1：一键设置所有场景（推荐）");
-        if (GUILayout.Button("🚀 一键设置所有5个场景", GUILayout.Height(40)))
+        DrawSection("步骤1：一键设置所有场景（推荐）", labelStyle);
+        
+        if (GUILayout.Button("🚀 一键设置所有6个场景", bigButtonStyle, GUILayout.Height(40)))
         {
             SetupAllScenes();
         }
 
         GUILayout.Space(20);
 
-        DrawSection("步骤2：单独设置场景");
+        DrawSection("步骤2：单独设置场景", labelStyle);
         
-        DrawSceneButton("主菜单 (MainMenu)", "MainMenu", 0);
-        DrawSceneButton("房间列表 (RoomList)", "RoomList", 1);
-        DrawSceneButton("选将界面 (HeroSelection)", "HeroSelection", 2);
-        DrawSceneButton("游戏场景 (GameScene)", "GameScene", 3);
-        DrawSceneButton("地形编辑器 (TerrainEditor)", "TerrainEditor", 4);
+        DrawSceneButton("登录场景 (Login)", "Login", 0);
+        DrawSceneButton("主菜单 (MainMenu)", "MainMenu", 1);
+        DrawSceneButton("房间列表 (RoomList)", "RoomList", 2);
+        DrawSceneButton("选将界面 (HeroSelection)", "HeroSelection", 3);
+        DrawSceneButton("游戏场景 (GameScene)", "GameScene", 4);
+        DrawSceneButton("地形编辑器 (TerrainEditor)", "TerrainEditor", 5);
 
         GUILayout.Space(20);
 
-        DrawSection("高级操作");
-        EditorGUILayout.HelpBox("清空场景会删除所有GameObject（保留Camera和Light）", MessageType.Warning);
-        if (GUILayout.Button("清空当前场景", GUILayout.Height(30)))
+        DrawSection("高级操作", labelStyle);
+        GUILayout.Label("⚠️ 清空场景会删除所有GameObject（保留Camera和Light）", labelStyle);
+        
+        if (GUILayout.Button("清空当前场景", buttonStyle, GUILayout.Height(30)))
         {
             if (EditorUtility.DisplayDialog("确认清空", "确定要清空当前场景吗？", "确定", "取消"))
             {
@@ -143,18 +287,33 @@ public class SceneSetupWizard : EditorWindow
         EditorGUILayout.EndScrollView();
     }
 
-    void DrawSection(string title)
+    void DrawSection(string title, GUIStyle labelStyle)
     {
         GUILayout.Space(10);
-        EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
-        EditorGUILayout.LabelField("", GUI.skin.horizontalSlider);
+        var sectionStyle = new GUIStyle(EditorStyles.boldLabel);
+        sectionStyle.fontSize = 13;
+        sectionStyle.fontStyle = FontStyle.Bold;
+        if (chineseFont != null)
+        {
+            sectionStyle.font = chineseFont;
+        }
+        GUILayout.Label(title, sectionStyle);
+        GUILayout.Box("", GUILayout.ExpandWidth(true), GUILayout.Height(1));
     }
 
     void DrawSceneButton(string displayName, string sceneName, int index)
     {
         EditorGUILayout.BeginHorizontal();
         string statusIcon = sceneStatus[index] ? "✅" : "⚪";
-        if (GUILayout.Button($"{statusIcon} 设置 {displayName}", GUILayout.Height(30)))
+        
+        var buttonStyle = new GUIStyle(GUI.skin.button);
+        if (chineseFont != null)
+        {
+            buttonStyle.font = chineseFont;
+            buttonStyle.fontSize = 12;
+        }
+        
+        if (GUILayout.Button($"{statusIcon} 设置 {displayName}", buttonStyle, GUILayout.Height(30)))
         {
             SetupScene(sceneName);
             sceneStatus[index] = true;
@@ -165,13 +324,13 @@ public class SceneSetupWizard : EditorWindow
     void SetupAllScenes()
     {
         if (!EditorUtility.DisplayDialog("确认设置", 
-            "将为所有5个场景创建完整的商业化UI结构。\n这可能需要1-2分钟。\n\n确定继续吗？", 
+            "将为所有6个场景创建完整的商业化UI结构。\n这可能需要1-2分钟。\n\n确定继续吗？", 
             "确定", "取消"))
         {
             return;
         }
 
-        string[] scenes = { "MainMenu", "RoomList", "HeroSelection", "GameScene", "TerrainEditor" };
+        string[] scenes = { "Login", "MainMenu", "RoomList", "HeroSelection", "GameScene", "TerrainEditor" };
         int successCount = 0;
         int failCount = 0;
         string errorLog = "";
@@ -257,6 +416,9 @@ public class SceneSetupWizard : EditorWindow
 
             switch (sceneName)
             {
+                case "Login":
+                    SetupLoginScene();
+                    break;
                 case "MainMenu":
                     SetupMainMenuScene();
                     break;
@@ -298,9 +460,239 @@ public class SceneSetupWizard : EditorWindow
         }
     }
 
+    #region 登录场景设置
+    void SetupLoginScene()
+    {
+        // 确保字体已加载
+        if (chineseFont == null)
+        {
+            LoadChineseFont();
+        }
+        
+        var canvas = CreateCanvas("LoginCanvas");
+        
+        // ========== 背景层 ==========
+        var bgContainer = CreatePanel(canvas.transform, "BackgroundContainer", Color.clear);
+        SetAnchor(bgContainer, AnchorPresets.Stretch, Vector2.zero);
+        
+        // 深色三国主题背景
+        var darkBG = CreatePanel(bgContainer.transform, "DarkBackground", new Color(0.08f, 0.05f, 0.02f));
+        SetAnchor(darkBG, AnchorPresets.Stretch, Vector2.zero);
+        
+        // 顶部装饰渐变（金色）
+        var topGradient = CreatePanel(bgContainer.transform, "TopGradient", new Color(0.4f, 0.3f, 0.1f, 0.3f));
+        SetSize(topGradient, 1920, 400);
+        SetAnchor(topGradient, AnchorPresets.TopStretch, Vector2.zero);
+        
+        // 背景装饰图片
+        var bgImagePlaceholder = CreatePanel(bgContainer.transform, "BackgroundImagePlaceholder", new Color(0.1f, 0.08f, 0.05f, 0.5f));
+        SetAnchor(bgImagePlaceholder, AnchorPresets.Stretch, Vector2.zero);
+        
+        var bgImage = bgImagePlaceholder.GetComponent<Image>();
+        var bgSprite = LoadBackgroundSprite("Login");
+        if (bgSprite != null)
+        {
+            bgImage.sprite = bgSprite;
+            bgImage.color = new Color(1f, 1f, 1f, 0.4f);
+        }
+        else
+        {
+            var bgNote = CreateText(bgImagePlaceholder.transform, "Note", "💡 提示：可在 Assets/Resources/UI/Backgrounds/ 添加 Login.jpg/png 作为背景图", 18);
+            SetAnchor(bgNote, AnchorPresets.MiddleCenter, Vector2.zero);
+            SetTextAlignment(bgNote, TextAnchor.MiddleCenter);
+            SetTextColor(bgNote, new Color(0.5f, 0.4f, 0.3f));
+        }
+        
+        // ========== 游戏LOGO/标题 ==========
+        var logoPanel = CreateCardPanel(canvas.transform, "LogoPanel", new Color(0.15f, 0.1f, 0.05f, 0.85f), 700, 180);
+        SetAnchor(logoPanel, AnchorPresets.TopCenter, new Vector2(0, -60));
+        
+        var titleMain = CreateText(logoPanel.transform, "TitleMain", "三国策略", 68);
+        SetAnchor(titleMain, AnchorPresets.MiddleCenter, new Vector2(0, 15));
+        SetTextOutline(titleMain, new Color(0.8f, 0.6f, 0.2f));
+        SetTextColor(titleMain, new Color(1f, 0.9f, 0.7f));
+        
+        var titleSub = CreateText(titleMain.transform, "TitleSub", "Three Kingdoms Strategy", 22);
+        SetAnchor(titleSub, AnchorPresets.BottomCenter, new Vector2(0, -40));
+        SetTextColor(titleSub, new Color(0.7f, 0.6f, 0.4f));
+        
+        // ========== 登录面板 ==========
+        var loginPanel = CreateCardPanel(canvas.transform, "LoginPanel", new Color(0.12f, 0.10f, 0.08f, 0.95f), 480, 420);
+        SetAnchor(loginPanel, AnchorPresets.MiddleCenter, new Vector2(0, -60));
+        
+        var panelTitle = CreateText(loginPanel.transform, "PanelTitle", "欢迎登录", 32);
+        SetAnchor(panelTitle, AnchorPresets.TopCenter, new Vector2(0, -30));
+        SetTextColor(panelTitle, new Color(1f, 0.95f, 0.8f));
+        
+        // 用户名输入框
+        var usernameInput = CreateStyledInputField(loginPanel.transform, "UsernameInput", "请输入用户名", new Vector2(0, -100));
+        SetSize(usernameInput, 400, 55);
+        
+        var usernameLabel = CreateText(loginPanel.transform, "UsernameLabel", "用户名", 18);
+        SetAnchor(usernameLabel, AnchorPresets.TopLeft, new Vector2(40, -75));
+        SetTextColor(usernameLabel, new Color(0.9f, 0.85f, 0.7f));
+        
+        // 密码输入框
+        var passwordInput = CreateStyledInputField(loginPanel.transform, "PasswordInput", "请输入密码", new Vector2(0, -190));
+        SetSize(passwordInput, 400, 55);
+        var passwordInputField = passwordInput.GetComponent<InputField>();
+        if (passwordInputField != null)
+        {
+            passwordInputField.contentType = InputField.ContentType.Password;
+        }
+        
+        var passwordLabel = CreateText(loginPanel.transform, "PasswordLabel", "密码", 18);
+        SetAnchor(passwordLabel, AnchorPresets.TopLeft, new Vector2(40, -165));
+        SetTextColor(passwordLabel, new Color(0.9f, 0.85f, 0.7f));
+        
+        // 记住密码选项
+        var rememberPanel = CreatePanel(loginPanel.transform, "RememberPanel", Color.clear);
+        SetSize(rememberPanel, 400, 30);
+        SetAnchor(rememberPanel, AnchorPresets.TopCenter, new Vector2(0, -255));
+        
+        var rememberCheckbox = CreatePanel(rememberPanel.transform, "Checkbox", new Color(0.3f, 0.25f, 0.2f));
+        SetSize(rememberCheckbox, 20, 20);
+        SetAnchor(rememberCheckbox, AnchorPresets.MiddleLeft, new Vector2(0, 0));
+        
+        var rememberText = CreateText(rememberPanel.transform, "RememberText", "记住密码", 16);
+        SetAnchor(rememberText, AnchorPresets.MiddleLeft, new Vector2(30, 0));
+        SetTextColor(rememberText, new Color(0.8f, 0.75f, 0.6f));
+        
+        // 登录按钮
+        var loginBtn = CreateGradientButton(loginPanel.transform, "LoginBtn", "登录", 
+            new Color(0.3f, 0.6f, 0.8f), new Color(0.2f, 0.4f, 0.6f), new Vector2(0, -310), new Vector2(400, 60));
+        AddButtonOnClick(loginBtn, "LoginController", "OnLogin");
+        
+        // 底部链接
+        var linkPanel = CreatePanel(loginPanel.transform, "LinkPanel", Color.clear);
+        SetSize(linkPanel, 400, 30);
+        SetAnchor(linkPanel, AnchorPresets.BottomCenter, new Vector2(0, 20));
+        
+        var registerBtn = CreateText(linkPanel.transform, "RegisterLink", "注册账号", 16);
+        SetAnchor(registerBtn, AnchorPresets.MiddleLeft, Vector2.zero);
+        SetTextColor(registerBtn, new Color(0.5f, 0.7f, 0.9f));
+        
+        var forgetBtn = CreateText(linkPanel.transform, "ForgetLink", "忘记密码", 16);
+        SetAnchor(forgetBtn, AnchorPresets.MiddleRight, Vector2.zero);
+        SetTextColor(forgetBtn, new Color(0.5f, 0.7f, 0.9f));
+        
+        // ========== 注册面板（默认隐藏） ==========
+        var registerPanel = CreateCardPanel(canvas.transform, "RegisterPanel", new Color(0.12f, 0.10f, 0.08f, 0.95f), 480, 550);
+        SetAnchor(registerPanel, AnchorPresets.MiddleCenter, new Vector2(0, -60));
+        registerPanel.SetActive(false);
+        
+        var regPanelTitle = CreateText(registerPanel.transform, "PanelTitle", "注册新账号", 32);
+        SetAnchor(regPanelTitle, AnchorPresets.TopCenter, new Vector2(0, -30));
+        SetTextColor(regPanelTitle, new Color(1f, 0.95f, 0.8f));
+        
+        // 注册表单
+        var regUsernameLabel = CreateText(registerPanel.transform, "UsernameLabel", "用户名", 18);
+        SetAnchor(regUsernameLabel, AnchorPresets.TopLeft, new Vector2(40, -85));
+        SetTextColor(regUsernameLabel, new Color(0.9f, 0.85f, 0.7f));
+        
+        var regUsernameInput = CreateStyledInputField(registerPanel.transform, "UsernameInput", "请输入用户名（4-20字符）", new Vector2(0, -110));
+        SetSize(regUsernameInput, 400, 55);
+        
+        var regEmailLabel = CreateText(registerPanel.transform, "EmailLabel", "邮箱", 18);
+        SetAnchor(regEmailLabel, AnchorPresets.TopLeft, new Vector2(40, -175));
+        SetTextColor(regEmailLabel, new Color(0.9f, 0.85f, 0.7f));
+        
+        var regEmailInput = CreateStyledInputField(registerPanel.transform, "EmailInput", "请输入邮箱地址", new Vector2(0, -200));
+        SetSize(regEmailInput, 400, 55);
+        
+        var regPasswordLabel = CreateText(registerPanel.transform, "PasswordLabel", "密码", 18);
+        SetAnchor(regPasswordLabel, AnchorPresets.TopLeft, new Vector2(40, -265));
+        SetTextColor(regPasswordLabel, new Color(0.9f, 0.85f, 0.7f));
+        
+        var regPasswordInput = CreateStyledInputField(registerPanel.transform, "PasswordInput", "请输入密码（6-20字符）", new Vector2(0, -290));
+        SetSize(regPasswordInput, 400, 55);
+        var regPasswordInputField = regPasswordInput.GetComponent<InputField>();
+        if (regPasswordInputField != null)
+        {
+            regPasswordInputField.contentType = InputField.ContentType.Password;
+        }
+        
+        var regConfirmLabel = CreateText(registerPanel.transform, "ConfirmLabel", "确认密码", 18);
+        SetAnchor(regConfirmLabel, AnchorPresets.TopLeft, new Vector2(40, -355));
+        SetTextColor(regConfirmLabel, new Color(0.9f, 0.85f, 0.7f));
+        
+        var regConfirmInput = CreateStyledInputField(registerPanel.transform, "ConfirmPasswordInput", "请再次输入密码", new Vector2(0, -380));
+        SetSize(regConfirmInput, 400, 55);
+        var regConfirmInputField = regConfirmInput.GetComponent<InputField>();
+        if (regConfirmInputField != null)
+        {
+            regConfirmInputField.contentType = InputField.ContentType.Password;
+        }
+        
+        // 注册按钮
+        var registerBtn2 = CreateGradientButton(registerPanel.transform, "RegisterBtn", "注册", 
+            new Color(0.3f, 0.7f, 0.4f), new Color(0.2f, 0.5f, 0.3f), new Vector2(0, -460), new Vector2(400, 60));
+        AddButtonOnClick(registerBtn2, "LoginController", "OnRegister");
+        
+        // 返回登录
+        var backToLoginText = CreateText(registerPanel.transform, "BackToLogin", "已有账号？返回登录", 16);
+        SetAnchor(backToLoginText, AnchorPresets.BottomCenter, new Vector2(0, 20));
+        SetTextColor(backToLoginText, new Color(0.5f, 0.7f, 0.9f));
+        
+        // ========== 消息提示框（默认隐藏） ==========
+        var messagePanel = CreateCardPanel(canvas.transform, "MessagePanel", new Color(0.15f, 0.12f, 0.08f, 0.95f), 400, 100);
+        SetAnchor(messagePanel, AnchorPresets.TopCenter, new Vector2(0, -280));
+        messagePanel.SetActive(false);
+        
+        var messageText = CreateText(messagePanel.transform, "MessageText", "提示信息", 20);
+        SetAnchor(messageText, AnchorPresets.MiddleCenter, Vector2.zero);
+        SetTextColor(messageText, new Color(1f, 1f, 1f));
+        SetTextAlignment(messageText, TextAnchor.MiddleCenter);
+        
+        // ========== 加载动画（默认隐藏） ==========
+        var loadingPanel = CreatePanel(canvas.transform, "LoadingPanel", new Color(0, 0, 0, 0.7f));
+        SetAnchor(loadingPanel, AnchorPresets.Stretch, Vector2.zero);
+        loadingPanel.SetActive(false);
+        
+        var loadingCard = CreateCardPanel(loadingPanel.transform, "LoadingCard", new Color(0.12f, 0.10f, 0.08f, 0.95f), 300, 150);
+        SetAnchor(loadingCard, AnchorPresets.MiddleCenter, Vector2.zero);
+        
+        var loadingText = CreateText(loadingCard.transform, "LoadingText", "正在登录...", 24);
+        SetAnchor(loadingText, AnchorPresets.MiddleCenter, new Vector2(0, -20));
+        SetTextColor(loadingText, new Color(0.9f, 0.85f, 0.7f));
+        
+        var loadingDots = CreateText(loadingCard.transform, "LoadingDots", "...", 32);
+        SetAnchor(loadingDots, AnchorPresets.MiddleCenter, new Vector2(0, 20));
+        SetTextColor(loadingDots, new Color(0.7f, 0.6f, 0.4f));
+        
+        // ========== 底部版本信息 ==========
+        var versionText = CreateText(canvas.transform, "VersionText", "v1.0.0 | 三国策略游戏", 14);
+        SetAnchor(versionText, AnchorPresets.BottomCenter, new Vector2(0, 15));
+        SetTextColor(versionText, new Color(0.5f, 0.45f, 0.35f));
+        
+        // ========== 服务器状态指示器 ==========
+        var statusPanel = CreatePanel(canvas.transform, "StatusPanel", new Color(0.1f, 0.08f, 0.05f, 0.8f));
+        SetSize(statusPanel, 180, 40);
+        SetAnchor(statusPanel, AnchorPresets.TopLeft, new Vector2(20, -20));
+        
+        var statusDot = CreatePanel(statusPanel.transform, "StatusDot", new Color(0.3f, 0.8f, 0.3f));
+        SetSize(statusDot, 12, 12);
+        SetAnchor(statusDot, AnchorPresets.MiddleLeft, new Vector2(15, 0));
+        
+        var statusText = CreateText(statusPanel.transform, "StatusText", "服务器在线", 16);
+        SetAnchor(statusText, AnchorPresets.MiddleLeft, new Vector2(35, 0));
+        SetTextColor(statusText, new Color(0.7f, 0.9f, 0.7f));
+        
+        CreateEventSystem();
+        
+        Debug.Log("✅ 登录场景UI创建完成");
+    }
+    #endregion
+
     #region 主菜单场景设置
     void SetupMainMenuScene()
     {
+        // 确保字体已加载
+        if (chineseFont == null)
+        {
+            LoadChineseFont();
+        }
+        
         var canvas = CreateCanvas("MainMenuCanvas");
         
         // 创建渐变背景层
@@ -321,11 +713,25 @@ public class SceneSetupWizard : EditorWindow
         SetSize(bottomGradient, 1920, 300);
         SetAnchor(bottomGradient, AnchorPresets.BottomStretch, Vector2.zero);
         
-        // 背景装饰图片占位符
+        // 背景装饰图片 - 尝试加载背景图
         var bgImagePlaceholder = CreatePanel(bgContainer.transform, "BackgroundImagePlaceholder", new Color(0.1f, 0.15f, 0.2f, 0.2f));
         SetAnchor(bgImagePlaceholder, AnchorPresets.Stretch, Vector2.zero);
-        var bgNote = CreateText(bgImagePlaceholder.transform, "Note", "[这里可以放背景图片]", 16);
-        SetAnchor(bgNote, AnchorPresets.MiddleCenter, Vector2.zero);
+        
+        var bgImage = bgImagePlaceholder.GetComponent<Image>();
+        var bgSprite = LoadBackgroundSprite("MainMenu");
+        if (bgSprite != null)
+        {
+            bgImage.sprite = bgSprite;
+            bgImage.color = new Color(1f, 1f, 1f, 0.6f); // 半透明效果
+        }
+        else
+        {
+            // 没有图片时显示提示
+            var bgNote = CreateText(bgImagePlaceholder.transform, "Note", "💡 提示：可在 Assets/UI/Backgrounds/ 添加背景图\n支持文件名: MainMenu.jpg/png", 18);
+            SetAnchor(bgNote, AnchorPresets.MiddleCenter, Vector2.zero);
+            SetTextAlignment(bgNote, TextAnchor.MiddleCenter);
+            SetTextColor(bgNote, new Color(0.4f, 0.4f, 0.5f));
+        }
         
         // ========== 主内容层 ==========
         
@@ -382,21 +788,27 @@ public class SceneSetupWizard : EditorWindow
         
         var quickMatchBtn = CreateGradientButton(mainButtonArea.transform, "QuickMatchBtn", "⚔️ 快速匹配", 
             new Color(0.2f, 0.7f, 0.3f), new Color(0.15f, 0.5f, 0.2f), new Vector2(0, btnY), new Vector2(480, 70));
+        AddButtonOnClick(quickMatchBtn, "MainMenuController", "OnQuickMatch");
         
         var roomListBtn = CreateGradientButton(mainButtonArea.transform, "RoomListBtn", "🏛️ 房间列表", 
             new Color(0.25f, 0.5f, 0.95f), new Color(0.15f, 0.35f, 0.7f), new Vector2(0, btnY - btnSpacing), new Vector2(480, 70));
+        AddButtonOnClick(roomListBtn, "MainMenuController", "OnRoomList");
         
         var profileBtn = CreateGradientButton(mainButtonArea.transform, "ProfileBtn", "👤 玩家资料", 
             new Color(0.8f, 0.5f, 0.2f), new Color(0.6f, 0.35f, 0.1f), new Vector2(0, btnY - btnSpacing * 2), new Vector2(480, 70));
+        AddButtonOnClick(profileBtn, "MainMenuController", "OnProfile");
         
         var shopBtn = CreateGradientButton(mainButtonArea.transform, "ShopBtn", "🛒 商店", 
             new Color(0.9f, 0.6f, 0.2f), new Color(0.7f, 0.4f, 0.1f), new Vector2(0, btnY - btnSpacing * 3), new Vector2(480, 70));
+        AddButtonOnClick(shopBtn, "MainMenuController", "OnShop");
         
         var settingsBtn = CreateGradientButton(mainButtonArea.transform, "SettingsBtn", "⚙️ 设置", 
             new Color(0.5f, 0.5f, 0.5f), new Color(0.3f, 0.3f, 0.3f), new Vector2(0, btnY - btnSpacing * 4), new Vector2(480, 70));
+        AddButtonOnClick(settingsBtn, "MainMenuController", "OnSettings");
         
         var quitBtn = CreateGradientButton(mainButtonArea.transform, "QuitBtn", "🚪 退出游戏", 
             new Color(0.7f, 0.25f, 0.25f), new Color(0.5f, 0.15f, 0.15f), new Vector2(0, btnY - btnSpacing * 5), new Vector2(480, 70));
+        AddButtonOnClick(quitBtn, "MainMenuController", "OnQuit");
         
         // 底部社交/辅助功能栏
         var bottomBar = CreatePanel(canvas.transform, "BottomBar", new Color(0.08f, 0.1f, 0.15f, 0.9f));
@@ -436,6 +848,12 @@ public class SceneSetupWizard : EditorWindow
     #region 房间列表场景设置
     void SetupRoomListScene()
     {
+        // 确保字体已加载
+        if (chineseFont == null)
+        {
+            LoadChineseFont();
+        }
+        
         var canvas = CreateCanvas("RoomListCanvas");
         
         // 背景层
@@ -445,6 +863,15 @@ public class SceneSetupWizard : EditorWindow
         var darkBG = CreatePanel(bgContainer.transform, "DarkBackground", new Color(0.06f, 0.08f, 0.12f));
         SetAnchor(darkBG, AnchorPresets.Stretch, Vector2.zero);
         
+        // 尝试加载背景图
+        var bgImage = darkBG.GetComponent<Image>();
+        var bgSprite = LoadBackgroundSprite("Lobby");
+        if (bgSprite != null)
+        {
+            bgImage.sprite = bgSprite;
+            bgImage.color = new Color(1f, 1f, 1f, 0.5f); // 半透明显示背景图
+        }
+        
         // 顶部导航栏
         var topNav = CreatePanel(canvas.transform, "TopNavBar", new Color(0.1f, 0.12f, 0.18f, 0.95f));
         SetSize(topNav, 1920, 100);
@@ -452,6 +879,7 @@ public class SceneSetupWizard : EditorWindow
         
         var backBtn = CreateIconTextButton(topNav.transform, "BackBtn", "←", "返回", 
             new Color(0.6f, 0.25f, 0.25f), new Vector2(80, 0), new Vector2(140, 60));
+        AddButtonOnClick(backBtn, "RoomListController", "OnBack");
         
         var titleText = CreateText(topNav.transform, "Title", "房间列表", 40);
         SetAnchor(titleText, AnchorPresets.MiddleCenter, Vector2.zero);
@@ -460,6 +888,7 @@ public class SceneSetupWizard : EditorWindow
         
         var refreshBtn = CreateIconTextButton(topNav.transform, "RefreshBtn", "🔄", "刷新", 
             new Color(0.25f, 0.5f, 0.8f), new Vector2(-300, 0), new Vector2(140, 60));
+        AddButtonOnClick(refreshBtn, "RoomListController", "OnRefresh");
         
         // 筛选/搜索栏
         var filterBar = CreateCardPanel(canvas.transform, "FilterBar", new Color(0.12f, 0.14f, 0.20f, 0.9f), 1200, 80);
@@ -468,11 +897,15 @@ public class SceneSetupWizard : EditorWindow
         var searchInput = CreateStyledInputField(filterBar.transform, "SearchInput", "🔍 搜索房间名称...", new Vector2(-400, 0));
         
         var filterAllBtn = CreateTabButton(filterBar.transform, "FilterAll", "全部", true, new Vector2(-100, 0));
+        AddButtonOnClick(filterAllBtn, "RoomListController", "OnFilterAll");
         var filterWaitingBtn = CreateTabButton(filterBar.transform, "FilterWaiting", "等待中", false, new Vector2(0, 0));
+        AddButtonOnClick(filterWaitingBtn, "RoomListController", "OnFilterWaiting");
         var filterPlayingBtn = CreateTabButton(filterBar.transform, "FilterPlaying", "游戏中", false, new Vector2(100, 0));
+        AddButtonOnClick(filterPlayingBtn, "RoomListController", "OnFilterPlaying");
         
         var createRoomBtnTop = CreateGradientButton(filterBar.transform, "CreateRoomBtn", "+ 创建房间", 
             new Color(0.2f, 0.7f, 0.3f), new Color(0.15f, 0.5f, 0.2f), new Vector2(450, 0), new Vector2(180, 60));
+        AddButtonOnClick(createRoomBtnTop, "RoomListController", "OnCreateRoom");
         
         // 房间列表滚动区域
         var scrollBG = CreateCardPanel(canvas.transform, "RoomListBackground", new Color(0.08f, 0.10f, 0.15f, 0.8f), 1200, 700);
@@ -496,9 +929,11 @@ public class SceneSetupWizard : EditorWindow
         
         var createRoomBtn = CreateGradientButton(bottomBar.transform, "CreateRoomBtn", "➕ 创建房间", 
             new Color(0.3f, 0.7f, 0.4f), new Color(0.2f, 0.5f, 0.3f), new Vector2(0, 5), new Vector2(350, 70));
+        AddButtonOnClick(createRoomBtn, "RoomListController", "OnCreateRoom");
         
         var quickMatchBtn = CreateGradientButton(bottomBar.transform, "QuickMatchBtn", "⚔️ 快速匹配", 
             new Color(0.9f, 0.5f, 0.2f), new Color(0.7f, 0.35f, 0.1f), new Vector2(400, 5), new Vector2(250, 60));
+        AddButtonOnClick(quickMatchBtn, "RoomListController", "OnQuickMatch");
         
         // 在线人数显示
         var onlinePanel = CreatePanel(bottomBar.transform, "OnlinePanel", new Color(0.15f, 0.20f, 0.25f, 0.8f));
@@ -535,6 +970,12 @@ public class SceneSetupWizard : EditorWindow
     #region 选将场景设置
     void SetupHeroSelectionScene()
     {
+        // 确保字体已加载
+        if (chineseFont == null)
+        {
+            LoadChineseFont();
+        }
+        
         var canvas = CreateCanvas("HeroSelectionCanvas");
         
         // 背景
@@ -543,6 +984,15 @@ public class SceneSetupWizard : EditorWindow
         
         var darkBG = CreatePanel(bgContainer.transform, "DarkBackground", new Color(0.08f, 0.06f, 0.10f));
         SetAnchor(darkBG, AnchorPresets.Stretch, Vector2.zero);
+        
+        // 尝试加载背景图
+        var bgImage = darkBG.GetComponent<Image>();
+        var bgSprite = LoadBackgroundSprite("HeroSelection");
+        if (bgSprite != null)
+        {
+            bgImage.sprite = bgSprite;
+            bgImage.color = new Color(1f, 1f, 1f, 0.4f); // 半透明显示背景图
+        }
         
         // 顶部信息栏
         var topBar = CreatePanel(canvas.transform, "TopBar", new Color(0.1f, 0.08f, 0.15f, 0.95f));
@@ -611,9 +1061,11 @@ public class SceneSetupWizard : EditorWindow
         
         var randomBtn = CreateGradientButton(bottomBar.transform, "RandomBtn", "🎲 随机选择", 
             new Color(0.7f, 0.5f, 0.2f), new Color(0.5f, 0.3f, 0.1f), new Vector2(-200, 0), new Vector2(220, 70));
+        AddButtonOnClick(randomBtn, "HeroSelectionController", "OnRandomSelect");
         
         var confirmBtn = CreateGradientButton(bottomBar.transform, "ConfirmBtn", "✔️ 确认选择", 
             new Color(0.2f, 0.7f, 0.3f), new Color(0.15f, 0.5f, 0.2f), new Vector2(200, 0), new Vector2(220, 70));
+        AddButtonOnClick(confirmBtn, "HeroSelectionController", "OnConfirm");
         
         // 武将详情面板（右侧，默认隐藏）
         var detailPanel = CreateCardPanel(canvas.transform, "HeroDetailPanel", new Color(0.1f, 0.1f, 0.15f, 0.98f), 450, 900);
@@ -649,9 +1101,11 @@ public class SceneSetupWizard : EditorWindow
         
         var confirmBtn2 = CreateGradientButton(confirmPanel.transform, "ConfirmBtn", "✔️ 确认选择", 
             new Color(0.2f, 0.7f, 0.3f), new Color(0.15f, 0.5f, 0.2f), new Vector2(0, 0), new Vector2(400, 65));
+        AddButtonOnClick(confirmBtn2, "HeroSelectionController", "OnConfirm");
         
         var randomBtn2 = CreateGradientButton(confirmPanel.transform, "RandomBtn", "🎲 随机选择", 
             new Color(0.7f, 0.5f, 0.2f), new Color(0.5f, 0.35f, 0.1f), new Vector2(-450, 0), new Vector2(250, 55));
+        AddButtonOnClick(randomBtn2, "HeroSelectionController", "OnRandomSelect");
         
         CreateEventSystem();
     }
@@ -660,6 +1114,12 @@ public class SceneSetupWizard : EditorWindow
     #region 游戏场景设置
     void SetupGameScene()
     {
+        // 确保字体已加载
+        if (chineseFont == null)
+        {
+            LoadChineseFont();
+        }
+        
         var canvas = CreateCanvas("GameCanvas");
         
         // 半透明深色背景（游戏时可能需要看到3D场景）
@@ -751,9 +1211,11 @@ public class SceneSetupWizard : EditorWindow
         
         var endTurnBtn = CreateGradientButton(actionButtons.transform, "EndTurnBtn", "结束回合", 
             new Color(0.2f, 0.7f, 0.3f), new Color(0.15f, 0.5f, 0.2f), new Vector2(0, 0), new Vector2(200, 70));
+        AddButtonOnClick(endTurnBtn, "GameController", "OnEndTurn");
         
         var menuBtn2 = CreateIconTextButton(actionButtons.transform, "MenuBtn", "☰", "菜单", 
             new Color(0.4f, 0.4f, 0.4f), new Vector2(-130, 0), new Vector2(80, 60));
+        AddButtonOnClick(menuBtn2, "GameController", "OnMenu");
         
         // ========== 小地图（右下角） ==========
         var minimapCard = CreateCardPanel(canvas.transform, "MinimapCard", new Color(0.08f, 0.08f, 0.12f, 0.9f), 250, 220);
@@ -772,11 +1234,26 @@ public class SceneSetupWizard : EditorWindow
     #region 地形编辑器场景设置
     void SetupTerrainEditorScene()
     {
+        // 确保字体已加载
+        if (chineseFont == null)
+        {
+            LoadChineseFont();
+        }
+        
         var canvas = CreateCanvas("EditorCanvas");
         
         // 背景
         var darkBG = CreatePanel(canvas.transform, "DarkBackground", new Color(0.06f, 0.07f, 0.09f));
         SetAnchor(darkBG, AnchorPresets.Stretch, Vector2.zero);
+        
+        // 尝试加载背景图
+        var bgImage = darkBG.GetComponent<Image>();
+        var bgSprite = LoadBackgroundSprite("MapEditor");
+        if (bgSprite != null)
+        {
+            bgImage.sprite = bgSprite;
+            bgImage.color = new Color(1f, 1f, 1f, 0.3f); // 半透明显示背景图
+        }
         
         // ========== 顶部工具栏 ==========
         var topToolbar = CreatePanel(canvas.transform, "TopToolbar", new Color(0.10f, 0.10f, 0.14f, 0.98f));
@@ -935,34 +1412,28 @@ public class SceneSetupWizard : EditorWindow
         var rect = go.AddComponent<RectTransform>();
         rect.sizeDelta = new Vector2(200, 50);
         
-        // 优先使用普通Text组件，确保中文字体正确应用
-        var textComp = go.AddComponent<Text>();
-        textComp.text = text;
-        textComp.fontSize = fontSize;
-        textComp.color = Color.white;
-        textComp.alignment = TextAnchor.MiddleCenter;
+        // 使用 TextMeshPro 支持中文（优先）
+        var tmpText = go.AddComponent<TextMeshProUGUI>();
+        tmpText.text = text;
+        tmpText.fontSize = fontSize;
+        tmpText.color = Color.white;
+        tmpText.alignment = TextAlignmentOptions.Center;
+        tmpText.enableWordWrapping = false;
         
-        // 使用中文字体
-        if (chineseFont != null)
+        // 使用 TMP 中文字体
+        if (tmpChineseFont != null)
         {
-            textComp.font = chineseFont;
+            tmpText.font = tmpChineseFont;
+            Debug.Log($"✅ 为 {name} 应用TMP中文字体");
         }
         else
         {
-            // 尝试创建系统字体
-            try
+            Debug.LogWarning($"⚠️ {name} 未找到TMP中文字体，可能无法显示中文");
+            // 尝试使用 TMP 默认字体
+            var defaultFont = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
+            if (defaultFont != null)
             {
-                Font sysFont = Font.CreateDynamicFontFromOSFont("Microsoft YaHei", fontSize);
-                if (sysFont != null)
-                {
-                    textComp.font = sysFont;
-                    Debug.Log($"✅ 为 {name} 创建中文字体成功");
-                }
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogWarning($"⚠️ 无法创建中文字体，使用Arial: {e.Message}");
-                textComp.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+                tmpText.font = defaultFont;
             }
         }
         
@@ -984,16 +1455,69 @@ public class SceneSetupWizard : EditorWindow
 
     void SetTextAlignment(GameObject textObj, TextAnchor alignment)
     {
-        var text = textObj.GetComponent<Text>();
-        if (text != null)
-            text.alignment = alignment;
+        var tmp = textObj.GetComponent<TextMeshProUGUI>();
+        if (tmp != null)
+        {
+            // 转换 TextAnchor 到 TextAlignmentOptions
+            tmp.alignment = ConvertTextAnchorToTMP(alignment);
+        }
+        else
+        {
+            var text = textObj.GetComponent<Text>();
+            if (text != null)
+                text.alignment = alignment;
+        }
+    }
+    
+    TextAlignmentOptions ConvertTextAnchorToTMP(TextAnchor anchor)
+    {
+        switch (anchor)
+        {
+            case TextAnchor.UpperLeft: return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter: return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight: return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft: return TextAlignmentOptions.MidlineLeft;
+            case TextAnchor.MiddleCenter: return TextAlignmentOptions.Center;
+            case TextAnchor.MiddleRight: return TextAlignmentOptions.MidlineRight;
+            case TextAnchor.LowerLeft: return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter: return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight: return TextAlignmentOptions.BottomRight;
+            default: return TextAlignmentOptions.Center;
+        }
     }
 
     void SetTextOutline(GameObject textObj, Color color)
     {
-        var outline = textObj.AddComponent<Outline>();
-        outline.effectColor = color;
-        outline.effectDistance = new Vector2(2, -2);
+        var tmp = textObj.GetComponent<TextMeshProUGUI>();
+        if (tmp != null)
+        {
+            // TextMeshPro 使用内置的 Outline 功能
+            // 检查材质是否已经初始化
+            if (tmp.fontMaterial != null)
+            {
+                tmp.outlineWidth = 0.2f;
+                tmp.outlineColor = color;
+            }
+            else
+            {
+                // 如果材质还没初始化，延迟设置
+                EditorApplication.delayCall += () =>
+                {
+                    if (tmp != null && tmp.fontMaterial != null)
+                    {
+                        tmp.outlineWidth = 0.2f;
+                        tmp.outlineColor = color;
+                    }
+                };
+            }
+        }
+        else
+        {
+            // 普通 Text 使用 Outline 组件
+            var outline = textObj.AddComponent<Outline>();
+            outline.effectColor = color;
+            outline.effectDistance = new Vector2(2, -2);
+        }
     }
 
     GameObject CreateGradientButton(Transform parent, string name, string text, Color topColor, Color bottomColor, Vector2 position, Vector2 size)
@@ -1504,6 +2028,543 @@ public class SceneSetupWizard : EditorWindow
         Debug.Log("场景已清空（保留了Camera和Light）");
     }
 
+    // 加载背景图片
+    Sprite LoadBackgroundSprite(string sceneName)
+    {
+        // 尝试多种格式和路径
+        string[] possiblePaths = {
+            $"Assets/Resources/UI/Backgrounds/{sceneName}.jpg",
+            $"Assets/Resources/UI/Backgrounds/{sceneName}.png",
+            $"Assets/UI/Backgrounds/{sceneName}.jpg",
+            $"Assets/UI/Backgrounds/{sceneName}.png",
+            $"Assets/Textures/Backgrounds/{sceneName}.jpg",
+            $"Assets/Textures/Backgrounds/{sceneName}.png"
+        };
+        
+        foreach (var path in possiblePaths)
+        {
+            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (texture != null)
+            {
+                // 将Texture2D转换为Sprite
+                string texturePath = AssetDatabase.GetAssetPath(texture);
+                
+                // 先尝试直接加载Sprite
+                var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(texturePath);
+                
+                if (sprite == null)
+                {
+                    // 如果直接加载失败，确保纹理导入设置正确
+                    TextureImporter importer = AssetImporter.GetAtPath(texturePath) as TextureImporter;
+                    if (importer != null && importer.textureType != TextureImporterType.Sprite)
+                    {
+                        Debug.LogWarning($"⚠️ 背景图 {sceneName} 需要设置为 Sprite 类型。正在自动修复...");
+                        importer.textureType = TextureImporterType.Sprite;
+                        importer.spriteImportMode = SpriteImportMode.Single;
+                        importer.maxTextureSize = 2048;
+                        importer.SaveAndReimport();
+                        
+                        // 重新加载
+                        sprite = AssetDatabase.LoadAssetAtPath<Sprite>(texturePath);
+                    }
+                    
+                    // 如果还是null，创建临时Sprite
+                    if (sprite == null)
+                    {
+                        sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+                    }
+                }
+                
+                Debug.Log($"✅ 成功加载背景图: {path}");
+                return sprite;
+            }
+        }
+        
+        Debug.Log($"💡 未找到 {sceneName} 的背景图，使用默认样式。可运行「三国策略 → 背景图片管理器」生成默认背景。");
+        return null;
+    }
+
+    // 添加按钮点击事件（通过创建占位脚本引用）
+    void AddButtonOnClick(GameObject buttonObj, string controllerName, string methodName)
+    {
+        var button = buttonObj.GetComponent<Button>();
+        if (button != null)
+        {
+            // 创建一个空的GameObject作为控制器占位符
+            var controllerObj = GameObject.Find(controllerName);
+            if (controllerObj == null)
+            {
+                controllerObj = new GameObject(controllerName);
+                // 添加注释组件说明这是个占位符
+                var note = controllerObj.AddComponent<UnityEngine.UI.Text>();
+                note.text = $"// 控制器占位符 - 实际游戏中应添加对应的 {controllerName} 脚本";
+                note.enabled = false;
+            }
+            
+            // 在Editor模式下，我们添加一个临时监听器用于测试
+            button.onClick.AddListener(() => {
+                Debug.Log($"🎯 按钮点击: {buttonObj.name} -> {controllerName}.{methodName}()");
+            });
+        }
+    }
+
+    #endregion
+
+    #region TextMeshPro 中文字体处理
+    
+    TMP_FontAsset FindTMPChineseFont()
+    {
+        // 查找项目中的中文TMP字体
+        string[] guids = AssetDatabase.FindAssets("t:TMP_FontAsset");
+        foreach (string guid in guids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            
+            // 检查是否是我们要找的字体
+            if (path.Contains("Chinese") || path.Contains("中文") || 
+                path.Contains("YaHei") || path.Contains("SimHei") || 
+                path.Contains("SGSA"))
+            {
+                try
+                {
+                    // 使用 AssetDatabase.LoadMainAssetAtPath 避免触发 OnValidate
+                    TMP_FontAsset fontAsset = AssetDatabase.LoadMainAssetAtPath(path) as TMP_FontAsset;
+                    
+                    // 检查字体是否有效（有材质）
+                    if (fontAsset != null)
+                    {
+                        // 尝试访问 material，捕获可能的异常
+                        try
+                        {
+                            var mat = fontAsset.material;
+                            if (mat != null)
+                            {
+                                return fontAsset;
+                            }
+                        }
+                        catch
+                        {
+                            // 材质无效，删除损坏的字体
+                            Debug.LogWarning($"⚠️ 找到字体 {path} 但它已损坏（缺少材质），将被删除");
+                            AssetDatabase.DeleteAsset(path);
+                        }
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"⚠️ 加载字体 {path} 时出错，将被删除: {ex.Message}");
+                    try
+                    {
+                        AssetDatabase.DeleteAsset(path);
+                    }
+                    catch
+                    {
+                        // 忽略删除失败
+                    }
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    void GenerateTMPChineseFont()
+    {
+        try
+        {
+            EditorUtility.DisplayProgressBar("生成中文字体", "正在准备...", 0.1f);
+            
+            // 1. 查找或创建系统字体
+            Font sourceFont = null;
+            string[] fontNames = { "Microsoft YaHei", "SimHei", "Arial Unicode MS" };
+            
+            foreach (string fontName in fontNames)
+            {
+                try
+                {
+                    sourceFont = Font.CreateDynamicFontFromOSFont(fontName, 32);
+                    if (sourceFont != null)
+                    {
+                        Debug.Log($"✅ 使用系统字体: {fontName}");
+                        break;
+                    }
+                }
+                catch { }
+            }
+            
+            if (sourceFont == null)
+            {
+                EditorUtility.ClearProgressBar();
+                EditorUtility.DisplayDialog("错误", 
+                    "无法找到中文字体！\n\n请手动操作：\n" +
+                    "1. 打开 C:\\Windows\\Fonts\n" +
+                    "2. 复制 msyh.ttc (微软雅黑) 到项目的 Assets/Fonts/ 目录\n" +
+                    "3. 重新运行此工具", 
+                    "确定");
+                return;
+            }
+            
+            // 2. 创建输出目录
+            string fontDir = "Assets/Fonts/TMP";
+            if (!System.IO.Directory.Exists(fontDir))
+            {
+                System.IO.Directory.CreateDirectory(fontDir);
+                AssetDatabase.Refresh();
+            }
+            
+            EditorUtility.DisplayProgressBar("生成中文字体", "正在生成字体图集...", 0.4f);
+            
+            // 3. 生成常用中文字符集
+            string characterSet = GetGameCommonCharacters();
+            
+            // 4. 创建TMP字体资源
+            string fontPath = $"{fontDir}/SGSA_ChineseFont.asset";
+            
+            EditorUtility.DisplayProgressBar("生成中文字体", "正在创建字体资源...", 0.6f);
+            
+            // 先创建材质和纹理（必须在创建 TMP_FontAsset 之前准备好）
+            EditorUtility.DisplayProgressBar("生成中文字体", "正在创建字体材质...", 0.5f);
+            
+            // 创建空白纹理图集
+            var atlasTexture = new Texture2D(512, 512, TextureFormat.Alpha8, false);
+            atlasTexture.name = "SGSA_ChineseFont Atlas";
+            
+            // 创建材质
+            Material fontMaterial = new Material(Shader.Find("TextMeshPro/Distance Field"));
+            fontMaterial.name = "SGSA_ChineseFont Material";
+            fontMaterial.SetTexture("_MainTex", atlasTexture);
+            
+            Debug.Log("✅ 创建字体材质和纹理图集");
+            
+            // 创建TMP字体资源（材质必须在创建之前准备好）
+            EditorUtility.DisplayProgressBar("生成中文字体", "正在创建TMP字体资源...", 0.6f);
+            
+            TMP_FontAsset fontAsset = ScriptableObject.CreateInstance<TMP_FontAsset>();
+            
+            if (fontAsset == null)
+            {
+                EditorUtility.ClearProgressBar();
+                EditorUtility.DisplayDialog("失败", "无法创建TMP_FontAsset实例！", "确定");
+                return;
+            }
+            
+            Debug.Log("✅ 创建了TMP_FontAsset实例");
+            
+            // 使用反射设置所有必需的内部字段（避免触发 OnValidate）
+            var fontType = typeof(TMP_FontAsset);
+            var bindingFlags = System.Reflection.BindingFlags.NonPublic | 
+                              System.Reflection.BindingFlags.Public | 
+                              System.Reflection.BindingFlags.Instance;
+            
+            // 1. 先通过反射设置材质字段（m_Material）
+            var materialField = fontType.GetField("m_Material", bindingFlags);
+            if (materialField != null)
+            {
+                materialField.SetValue(fontAsset, fontMaterial);
+                Debug.Log("✅ 通过反射设置 m_Material 字段");
+            }
+            else
+            {
+                // 如果找不到私有字段，使用公共属性
+                fontAsset.material = fontMaterial;
+                Debug.Log("✅ 通过属性设置 material");
+            }
+            
+            // 2. 设置图集纹理（m_AtlasTexture）
+            var atlasTextureField = fontType.GetField("m_AtlasTexture", bindingFlags);
+            if (atlasTextureField != null)
+            {
+                atlasTextureField.SetValue(fontAsset, atlasTexture);
+                Debug.Log("✅ 设置图集纹理");
+            }
+            
+            // 3. 设置源字体（兼容不同版本）
+            bool fontSet = false;
+            string[] possibleFields = new string[] 
+            {
+                "m_SourceFontFile",
+                "m_SourceFontFile_EditorRef", 
+                "sourceFontFile",
+                "m_SourceFont"
+            };
+            
+            foreach (var fieldName in possibleFields)
+            {
+                var field = fontType.GetField(fieldName, bindingFlags);
+                if (field != null)
+                {
+                    try
+                    {
+                        field.SetValue(fontAsset, sourceFont);
+                        fontSet = true;
+                        Debug.Log($"✅ 成功通过字段 '{fieldName}' 设置源字体");
+                        break;
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogWarning($"⚠️ 字段 '{fieldName}' 设置失败: {ex.Message}");
+                    }
+                }
+            }
+            
+            if (!fontSet)
+            {
+                Debug.LogWarning("⚠️ 无法通过反射设置源字体，字体可能无法正常工作");
+            }
+            
+            // 4. 设置字体名称和模式
+            fontAsset.name = "SGSA_ChineseFont";
+            fontAsset.atlasPopulationMode = AtlasPopulationMode.Dynamic;
+            
+            Debug.Log("✅ 设置字体为动态模式");
+            
+            // 6. 现在保存所有资源
+            EditorUtility.DisplayProgressBar("生成中文字体", "正在保存资源...", 0.8f);
+            
+            // 使用 SerializedObject 来安全地设置属性（避免触发 OnValidate）
+            SerializedObject serializedFont = new SerializedObject(fontAsset);
+            
+            // 再次确保材质已设置
+            SerializedProperty materialProp = serializedFont.FindProperty("m_Material");
+            if (materialProp != null)
+            {
+                materialProp.objectReferenceValue = fontMaterial;
+                Debug.Log("✅ 通过 SerializedProperty 设置材质");
+            }
+            
+            // 应用更改但不触发 OnValidate
+            serializedFont.ApplyModifiedPropertiesWithoutUndo();
+            
+            // 确保材质已正确设置（在保存之前）
+            fontAsset.material = fontMaterial;
+            
+            // 先创建材质和纹理作为独立资源
+            string materialPath = $"{fontDir}/SGSA_ChineseFont_Material.mat";
+            string texturePath = $"{fontDir}/SGSA_ChineseFont_Atlas.asset";
+            
+            AssetDatabase.CreateAsset(fontMaterial, materialPath);
+            AssetDatabase.CreateAsset(atlasTexture, texturePath);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            
+            Debug.Log("✅ 保存材质和纹理资源");
+            
+            // 现在创建字体资源（主资源），此时材质已经是持久化的资源了
+            AssetDatabase.CreateAsset(fontAsset, fontPath);
+            
+            // 重新加载已持久化的资源，确保引用正确
+            fontMaterial = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+            atlasTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
+            fontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(fontPath);
+            
+            // 确保材质引用正确的图集纹理
+            fontMaterial.SetTexture("_MainTex", atlasTexture);
+            
+            // 使用SerializedObject来安全地设置所有引用
+            SerializedObject so = new SerializedObject(fontAsset);
+            
+            // 设置材质引用
+            SerializedProperty matProp = so.FindProperty("m_Material");
+            if (matProp != null)
+            {
+                matProp.objectReferenceValue = fontMaterial;
+            }
+            
+            // 关键：设置图集纹理数组引用
+            SerializedProperty atlasTexturesProp = so.FindProperty("m_AtlasTextures");
+            if (atlasTexturesProp != null && atlasTexturesProp.isArray)
+            {
+                atlasTexturesProp.ClearArray();
+                atlasTexturesProp.InsertArrayElementAtIndex(0);
+                atlasTexturesProp.GetArrayElementAtIndex(0).objectReferenceValue = atlasTexture;
+                Debug.Log("✅ 设置字体图集纹理引用");
+            }
+            
+            // 应用所有更改
+            so.ApplyModifiedPropertiesWithoutUndo();
+            
+            // 保存所有更改
+            EditorUtility.SetDirty(fontAsset);
+            EditorUtility.SetDirty(fontMaterial);
+            EditorUtility.SetDirty(atlasTexture);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            
+            EditorUtility.DisplayProgressBar("生成中文字体", "完成！", 1.0f);
+            
+            Debug.Log($"✅ 成功生成TMP中文字体: {fontPath}");
+            Debug.Log($"   字体模式: Dynamic（动态加载）");
+            Debug.Log($"   中文字符将在运行时自动从系统字体加载");
+            
+            EditorUtility.ClearProgressBar();
+            
+            // 自动应用到所有场景
+            if (EditorUtility.DisplayDialog("成功", 
+                "✅ TMP中文字体生成成功！\n\n" +
+                "字体已设置为动态模式，会在运行时自动加载中文字符。\n\n" +
+                "是否立即应用到所有场景？", 
+                "是", "稍后"))
+            {
+                ApplyTMPFontToAllScenes(fontAsset);
+            }
+            
+            // 选中生成的字体（延迟执行避免错误）
+            EditorApplication.delayCall += () => 
+            {
+                if (fontAsset != null)
+                {
+                    Selection.activeObject = fontAsset;
+                    EditorGUIUtility.PingObject(fontAsset);
+                }
+            };
+        }
+        catch (System.Exception e)
+        {
+            EditorUtility.ClearProgressBar();
+            EditorUtility.DisplayDialog("错误", $"生成字体时出错：\n{e.Message}", "确定");
+            Debug.LogError($"❌ 生成字体失败: {e}");
+        }
+    }
+    
+    string GetGameCommonCharacters()
+    {
+        // 游戏中使用的所有中文字符
+        return "三国策略战斗" +
+               "登录注册账号密码确认" +
+               "用户名邮箱手机号码" +
+               "没有点击返回提交取消" +
+               "开始游戏设置退出" +
+               "主城野外英雄背包商店" +
+               "金币木材石料粮食资源" +
+               "等级经验战力属性技能" +
+               "攻击防御生命法力速度" +
+               "装备道具武器防具饰品" +
+               "任务成就排行榜奖励" +
+               "好友聊天邮件公告消息" +
+               "联盟军团公会帮派势力" +
+               "建筑升级招募训练科技" +
+               "士兵武将城池关卡副本" +
+               "刘备关羽张飞赵云马超黄忠" +
+               "曹操夏侯惇夏侯渊典韦许褚张辽" +
+               "孙权周瑜鲁肃吕蒙陆逊甘宁" +
+               "诸葛亮庞统司马懿郭嘉荀彧" +
+               "吕布貂蝉董卓袁绍袁术" +
+               "一二三四五六七八九十百千万亿" +
+               "年月日时分秒天周期" +
+               "的了是在不有和人这中大为上个我" +
+               "来说到于地他时要就出会可也你" +
+               "对生能而子得如于着下自之年过" +
+               "发后作里用道行所然家种事成方" +
+               "多经么去法学如都同现当没动面" +
+               "起看定天分还进好小部其些主样" +
+               "理心她本前开但因只从想实日军" +
+               "者意无力它与长把机十民第公此" +
+               "使结解知民很情量长程度该常非" +
+               "间由问工作地给总体合相样被两" +
+               "重新线内正外将点此变条物何通" +
+               "0123456789" +
+               "abcdefghijklmnopqrstuvwxyz" +
+               "ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+               "！？。，、；：（）【】《》" +
+               "+-*/=<>≤≥×÷%@#$&" +
+               "❤★☆◆◇○●□■△▲▽▼" +
+               "⚔🛡💰🏆🎖👤👥✉🏛🚪⚙";
+    }
+    
+    void ApplyTMPFontToAllScenes(TMP_FontAsset fontAsset)
+    {
+        if (fontAsset == null)
+        {
+            EditorUtility.DisplayDialog("错误", "字体资源为空！", "确定");
+            return;
+        }
+        
+        // 警告用户
+        if (!EditorUtility.DisplayDialog("警告", 
+            "⚠️ 此操作会替换所有场景中的TMP字体！\n\n" +
+            "如果某些场景已经配置好了字体，建议只手动修复有问题的场景。\n\n" +
+            "确定要继续吗？",
+            "继续", "取消"))
+        {
+            return;
+        }
+        
+        // 获取所有场景路径
+        string[] scenePaths = {
+            "Assets/Scenes/Login.unity",
+            "Assets/Scenes/MainMenu.unity",
+            "Assets/Scenes/RoomList.unity",
+            "Assets/Scenes/HeroSelection.unity",
+            "Assets/Scenes/GameScene.unity",
+            "Assets/Scenes/TerrainEditor.unity"
+        };
+        
+        int updatedCount = 0;
+        int totalCount = 0;
+        int skippedCount = 0;
+        
+        try
+        {
+            foreach (string scenePath in scenePaths)
+            {
+                if (!System.IO.File.Exists(scenePath))
+                    continue;
+                
+                EditorUtility.DisplayProgressBar("应用字体", $"正在处理场景: {System.IO.Path.GetFileNameWithoutExtension(scenePath)}...", (float)totalCount / scenePaths.Length);
+                
+                // 打开场景
+                var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+                
+                // 查找所有TextMeshProUGUI组件
+                var tmpComponents = GameObject.FindObjectsOfType<TextMeshProUGUI>(true);
+                
+                int sceneUpdated = 0;
+                foreach (var tmp in tmpComponents)
+                {
+                    // 只替换字体为null或者是默认字体的组件
+                    if (tmp.font == null || tmp.font.name.Contains("LiberationSans"))
+                    {
+                        tmp.font = fontAsset;
+                        updatedCount++;
+                        sceneUpdated++;
+                    }
+                    else
+                    {
+                        skippedCount++;
+                    }
+                }
+                
+                // 只有在有更新时才保存场景
+                if (sceneUpdated > 0)
+                {
+                    EditorSceneManager.SaveScene(scene);
+                    Debug.Log($"✅ 场景 {System.IO.Path.GetFileNameWithoutExtension(scenePath)} 已更新 {sceneUpdated} 个TMP组件（跳过 {tmpComponents.Length - sceneUpdated} 个已配置的组件）");
+                }
+                else
+                {
+                    Debug.Log($"ℹ️ 场景 {System.IO.Path.GetFileNameWithoutExtension(scenePath)} 中所有TMP组件都已正确配置，无需更新");
+                }
+                
+                totalCount++;
+            }
+        }
+        finally
+        {
+            EditorUtility.ClearProgressBar();
+        }
+        
+        EditorUtility.DisplayDialog("完成", 
+            $"✅ 字体应用完成！\n\n" +
+            $"处理场景: {totalCount} 个\n" +
+            $"更新组件: {updatedCount} 个\n" +
+            $"跳过已配置: {skippedCount} 个\n\n" +
+            $"现在运行游戏，中文应该可以正常显示了！", 
+            "确定");
+        
+        Debug.Log($"========== TMP字体应用完成 ==========");
+        Debug.Log($"处理场景: {totalCount}, 更新组件: {updatedCount}, 跳过: {skippedCount}");
+    }
+    
     #endregion
 
     enum AnchorPresets

@@ -51,7 +51,7 @@ func main() {
 	go gameManager.Start()
 
 	// 设置路由
-	r := router.SetupRouter(gameManager, cfg)
+	r := router.SetupRouter(gameManager, cfg, db)
 
 	// 创建 HTTP 服务器
 	srv := &http.Server{

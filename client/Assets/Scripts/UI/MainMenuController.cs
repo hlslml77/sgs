@@ -16,6 +16,7 @@ namespace SanguoStrategy.UI
         [SerializeField] private Button roomListButton;
         [SerializeField] private Button profileButton;
         [SerializeField] private Button settingsButton;
+        [SerializeField] private Button logoutButton;
         [SerializeField] private Button exitButton;
         
         [Header("Player Info")]
@@ -26,16 +27,58 @@ namespace SanguoStrategy.UI
         [Header("Network")]
         [SerializeField] private NetworkManager networkManager;
         
+        private ApiClient apiClient;
+        
         private void Start()
         {
+            // 检查登录状态
+            CheckLoginStatus();
+            
             InitializeButtons();
             LoadPlayerInfo();
             
-            // 确保网络连接
-            if (networkManager != null)
+            // 初始化网络管理器
+            if (networkManager == null)
+            {
+                networkManager = FindObjectOfType<NetworkManager>();
+                if (networkManager == null)
+                {
+                    GameObject nmObj = new GameObject("NetworkManager");
+                    networkManager = nmObj.AddComponent<NetworkManager>();
+                }
+            }
+            
+            // 连接到服务器
+            if (networkManager != null && !networkManager.IsConnected())
             {
                 networkManager.Connect();
             }
+            
+            // 初始化API客户端
+            apiClient = FindObjectOfType<ApiClient>();
+            if (apiClient == null)
+            {
+                GameObject apiObj = new GameObject("ApiClient");
+                apiClient = apiObj.AddComponent<ApiClient>();
+                DontDestroyOnLoad(apiObj);
+            }
+        }
+        
+        /// <summary>
+        /// 检查登录状态
+        /// </summary>
+        private void CheckLoginStatus()
+        {
+            string token = PlayerPrefs.GetString("AuthToken", "");
+            if (string.IsNullOrEmpty(token))
+            {
+                // 没有token，返回登录页面
+                Debug.LogWarning("未检测到登录信息，返回登录页面");
+                SceneManager.LoadScene("Login");
+                return;
+            }
+            
+            Debug.Log("检测到登录信息，已进入主菜单");
         }
         
         private void InitializeButtons()
@@ -51,6 +94,9 @@ namespace SanguoStrategy.UI
                 
             if (settingsButton != null)
                 settingsButton.onClick.AddListener(OnSettings);
+                
+            if (logoutButton != null)
+                logoutButton.onClick.AddListener(OnLogout);
                 
             if (exitButton != null)
                 exitButton.onClick.AddListener(OnExit);
@@ -94,6 +140,27 @@ namespace SanguoStrategy.UI
         {
             Debug.Log("打开设置");
             // TODO: 显示设置面板
+        }
+        
+        /// <summary>
+        /// 登出
+        /// </summary>
+        private void OnLogout()
+        {
+            Debug.Log("登出账号");
+            
+            // 清除保存的token
+            PlayerPrefs.DeleteKey("AuthToken");
+            PlayerPrefs.Save();
+            
+            // 断开网络连接
+            if (networkManager != null)
+            {
+                networkManager.Disconnect();
+            }
+            
+            // 返回登录页面
+            SceneManager.LoadScene("Login");
         }
         
         /// <summary>

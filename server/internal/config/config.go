@@ -53,7 +53,7 @@ type GameConfig struct {
 }
 
 type JWTConfig struct {
-	SecretKey        string `yaml:"secret_key"`
+	Secret           string `yaml:"secret_key"`
 	TokenExpireHours int    `yaml:"token_expire_hours"`
 }
 
