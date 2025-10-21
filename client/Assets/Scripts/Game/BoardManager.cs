@@ -28,6 +28,48 @@ namespace SanguoStrategy.Game
         private Dictionary<string, GameObject> terrains = new Dictionary<string, GameObject>();
 
         private GameObject selectedGeneral;
+        private TileController selectedTile;
+
+        /// <summary>
+        /// 获取指定位置的瓦片
+        /// </summary>
+        public TileController GetTileAt(Vector2Int position)
+        {
+            if (position.x < 0 || position.x >= boardWidth || position.y < 0 || position.y >= boardHeight)
+                return null;
+
+            if (tiles == null || tiles[position.x, position.y] == null)
+                return null;
+
+            return tiles[position.x, position.y].GetComponent<TileController>();
+        }
+
+        /// <summary>
+        /// 处理瓦片点击事件
+        /// </summary>
+        public void OnTileClicked(TileController tile)
+        {
+            Debug.Log($"瓦片被点击: {tile.GridPosition}");
+
+            if (selectedTile != null)
+            {
+                selectedTile.SetSelected(false);
+            }
+
+            selectedTile = tile;
+            tile.SetSelected(true);
+
+            // 如果有选中的武将，移动到点击的瓦片
+            if (selectedGeneral != null)
+            {
+                var controller = selectedGeneral.GetComponent<GeneralController>();
+                if (controller != null)
+                {
+                    GameManager.Instance.MoveGeneral(controller.GeneralId, tile.GridPosition);
+                    DeselectGeneral();
+                }
+            }
+        }
 
         /// <summary>
         /// 初始化棋盘
@@ -56,10 +98,12 @@ namespace SanguoStrategy.Game
                     tile.name = $"Tile_{x}_{y}";
                     tiles[x, y] = tile;
 
-                    // 添加点击事件
-                    var tileScript = tile.AddComponent<TileController>();
-                    tileScript.Position = new Vector2Int(x, y);
-                    tileScript.OnTileClicked += HandleTileClicked;
+                    // 初始化TileController
+                    var tileController = tile.GetComponent<TileController>();
+                    if (tileController == null)
+                        tileController = tile.AddComponent<TileController>();
+                    
+                    tileController.Initialize(new Vector2Int(x, y), TileType.Plain);
                 }
             }
         }
@@ -182,25 +226,6 @@ namespace SanguoStrategy.Game
         }
 
         /// <summary>
-        /// 处理格子点击
-        /// </summary>
-        private void HandleTileClicked(Vector2Int position)
-        {
-            Debug.Log($"Tile clicked: {position}");
-
-            if (selectedGeneral != null)
-            {
-                // 移动选中的武将到点击的格子
-                var controller = selectedGeneral.GetComponent<GeneralController>();
-                if (controller != null)
-                {
-                    GameManager.Instance.MoveGeneral(controller.GeneralId, position);
-                    DeselectGeneral();
-                }
-            }
-        }
-
-        /// <summary>
         /// 处理武将点击
         /// </summary>
         private void HandleGeneralClicked(GameObject general)
@@ -264,20 +289,6 @@ namespace SanguoStrategy.Game
                     }
                 }
             }
-        }
-    }
-
-    /// <summary>
-    /// 格子控制器
-    /// </summary>
-    public class TileController : MonoBehaviour
-    {
-        public Vector2Int Position;
-        public event System.Action<Vector2Int> OnTileClicked;
-
-        private void OnMouseDown()
-        {
-            OnTileClicked?.Invoke(Position);
         }
     }
 }

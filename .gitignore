@@ -1,23 +1,141 @@
-# OS
+# ============================================
+# 三国策略项目 .gitignore
+# ============================================
+
+# ===== 操作系统 =====
 .DS_Store
 Thumbs.db
+*.lnk
 
-# IDEs
+# ===== IDE 和编辑器 =====
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+.vs/
 
-# Logs
+# ===== Unity 客户端 =====
+# Unity 生成的文件夹（非常重要！）
+client/[Ll]ibrary/
+client/[Tt]emp/
+client/[Oo]bj/
+client/[Bb]uild/
+client/[Bb]uilds/
+client/[Ll]ogs/
+client/[Uu]ser[Ss]ettings/
+
+# Unity 特定文件
+client/MemoryCaptures/
+client/[Aa]ssets/AssetStoreTools*
+client/[Aa]ssets/StreamingAssets/aa.meta
+client/[Aa]ssets/StreamingAssets/aa/
+
+# Visual Studio 缓存文件
+client/*.pidb.meta
+client/*.pdb.meta
+client/*.mdb.meta
+
+# Unity3D 生成的文件
+client/ExportedObj/
+client/.consulo/
+client/*.csproj
+client/*.unityproj
+client/*.sln
+client/*.suo
+client/*.tmp
+client/*.user
+client/*.userprefs
+client/*.pidb
+client/*.booproj
+client/*.svd
+client/*.pdb
+client/*.mdb
+client/*.opendb
+client/*.VC.db
+
+# Unity3D 生成的 meta 文件
+client/*.pidb.meta
+client/*.pdb.meta
+client/*.mdb.meta
+
+# Crashlytics
+client/crashlytics-build.properties
+
+# ===== Go 服务器 =====
+# 二进制文件
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+server/bin/
+server/dist/
+
+# 测试和覆盖率
+*.test
+*.out
+server/coverage.txt
+server/coverage.html
+
+# 依赖
+server/vendor/
+
+# Go workspace
+go.work
+
+# ===== 配置文件 =====
+# 只保留示例配置，不上传实际配置
+server/config/config.yaml
+# 保留示例文件：server/config/config.example.yaml
+
+# ===== 数据库 =====
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== 日志 =====
 *.log
 logs/
+server/logs/
+client/Logs/
 
-# Temporary
+# ===== 临时文件 =====
 tmp/
 temp/
+server/tmp/
+client/Temp/
 
-# Game design document (keep UTF-8 version)
+# ===== 文档和辅助脚本 =====
+# 游戏设计文档（保留 UTF-8 版本，忽略其他格式）
 sgs.txt
 三国玩法设计.docx
 
+# 临时说明文件（这些可以选择性保留或删除）
+场景是空的怎么办.txt
+开始这里.txt
+快速参考卡.txt
+完成总结.md
+场景内容创建完成总结.md
+场景内容生成指南.md
+
+# 辅助批处理脚本（这些可以选择性保留）
+# check_client_env.bat
+# open_unity_hub.bat
+
+# ===== 其他 =====
+# 备份文件
+*.bak
+*.backup
+*~
+
+# 压缩文件（通常不需要版本控制）
+*.zip
+*.rar
+*.7z
+*.tar.gz
+
+# 环境变量文件
+.env
+.env.local
+.env.*.local

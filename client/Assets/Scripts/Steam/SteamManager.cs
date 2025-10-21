@@ -1,5 +1,5 @@
 using UnityEngine;
-#if UNITY_STANDALONE
+#if UNITY_STANDALONE && STEAMWORKS_NET
 using Steamworks;
 #endif
 
@@ -32,7 +32,7 @@ namespace SanguoStrategy.Steam
 
         private void InitializeSteam()
         {
-#if UNITY_STANDALONE
+#if UNITY_STANDALONE && STEAMWORKS_NET
             try
             {
                 if (SteamAPI.RestartAppIfNecessary((AppId_t)480)) // 480是测试AppID，需要替换
@@ -67,7 +67,7 @@ namespace SanguoStrategy.Steam
 
         private void Update()
         {
-#if UNITY_STANDALONE
+#if UNITY_STANDALONE && STEAMWORKS_NET
             if (IsSteamInitialized)
             {
                 SteamAPI.RunCallbacks();
@@ -80,7 +80,7 @@ namespace SanguoStrategy.Steam
         /// </summary>
         public byte[] GetAuthSessionTicket()
         {
-#if UNITY_STANDALONE
+#if UNITY_STANDALONE && STEAMWORKS_NET
             if (!IsSteamInitialized) return null;
 
             byte[] ticket = new byte[1024];
@@ -102,7 +102,7 @@ namespace SanguoStrategy.Steam
         /// </summary>
         public void UnlockAchievement(string achievementId)
         {
-#if UNITY_STANDALONE
+#if UNITY_STANDALONE && STEAMWORKS_NET
             if (!IsSteamInitialized) return;
 
             bool success = SteamUserStats.SetAchievement(achievementId);
@@ -119,7 +119,7 @@ namespace SanguoStrategy.Steam
         /// </summary>
         public bool IsAchievementUnlocked(string achievementId)
         {
-#if UNITY_STANDALONE
+#if UNITY_STANDALONE && STEAMWORKS_NET
             if (!IsSteamInitialized) return false;
 
             bool achieved;
@@ -135,7 +135,7 @@ namespace SanguoStrategy.Steam
         /// </summary>
         public void SetStat(string statName, int value)
         {
-#if UNITY_STANDALONE
+#if UNITY_STANDALONE && STEAMWORKS_NET
             if (!IsSteamInitialized) return;
 
             SteamUserStats.SetStat(statName, value);
@@ -148,7 +148,7 @@ namespace SanguoStrategy.Steam
         /// </summary>
         public void ShowFriendsList()
         {
-#if UNITY_STANDALONE
+#if UNITY_STANDALONE && STEAMWORKS_NET
             if (!IsSteamInitialized) return;
 
             SteamFriends.ActivateGameOverlay("Friends");
@@ -170,7 +170,7 @@ namespace SanguoStrategy.Steam
 
         private void OnDestroy()
         {
-#if UNITY_STANDALONE
+#if UNITY_STANDALONE && STEAMWORKS_NET
             if (IsSteamInitialized)
             {
                 SteamAPI.Shutdown();
@@ -180,7 +180,7 @@ namespace SanguoStrategy.Steam
 
         private void OnApplicationQuit()
         {
-#if UNITY_STANDALONE
+#if UNITY_STANDALONE && STEAMWORKS_NET
             if (IsSteamInitialized)
             {
                 SteamAPI.Shutdown();

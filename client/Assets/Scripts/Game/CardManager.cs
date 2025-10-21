@@ -132,62 +132,6 @@ namespace SanguoStrategy.Game
         }
     }
 
-    /// <summary>
-    /// 卡牌控制器
-    /// </summary>
-    public class CardController : MonoBehaviour
-    {
-        public string CardId { get; private set; }
-        
-        [Header("UI Elements")]
-        [SerializeField] private UnityEngine.UI.Image cardImage;
-        [SerializeField] private TMPro.TextMeshProUGUI nameText;
-        [SerializeField] private TMPro.TextMeshProUGUI typeText;
-        [SerializeField] private GameObject selectionFrame;
-
-        private Card cardData;
-        public event System.Action<GameObject> OnCardClicked;
-
-        public void Initialize(Card card)
-        {
-            cardData = card;
-            CardId = card.Id;
-
-            if (nameText != null)
-                nameText.text = card.Name;
-
-            if (typeText != null)
-                typeText.text = $"{card.Suit} {card.Value}";
-
-            UpdateVisual();
-        }
-
-        private void UpdateVisual()
-        {
-            // 根据卡牌类型设置颜色
-            Color cardColor = cardData.Type switch
-            {
-                "杀" => new Color(1f, 0.3f, 0.3f),
-                "闪" => new Color(0.3f, 1f, 0.3f),
-                "桃" => new Color(1f, 0.7f, 0.8f),
-                "地形牌" => new Color(0.7f, 0.5f, 0.3f),
-                _ => Color.white
-            };
-
-            if (cardImage != null)
-                cardImage.color = cardColor;
-        }
-
-        public void ShowSelection(bool show)
-        {
-            if (selectionFrame != null)
-                selectionFrame.SetActive(show);
-        }
-
-        public void OnPointerClick()
-        {
-            OnCardClicked?.Invoke(gameObject);
-        }
-    }
+    // 注意：CardController 已在 Game/CardController.cs 定义，此处移除重复定义
 }
 

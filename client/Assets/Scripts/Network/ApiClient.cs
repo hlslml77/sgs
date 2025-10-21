@@ -68,9 +68,17 @@ namespace SanguoStrategy.Network
             {
                 if (success)
                 {
-                    var data = JsonConvert.DeserializeObject<dynamic>(response);
-                    SetAuthToken(data.token.ToString());
-                    callback?.Invoke(true, "注册成功");
+                    try
+                    {
+                        var data = JsonConvert.DeserializeObject<AuthResponse>(response);
+                        SetAuthToken(data.token);
+                        callback?.Invoke(true, "注册成功");
+                    }
+                    catch (System.Exception e)
+                    {
+                        Debug.LogError($"解析注册响应失败: {e.Message}");
+                        callback?.Invoke(false, "解析响应失败");
+                    }
                 }
                 else
                 {
@@ -94,9 +102,17 @@ namespace SanguoStrategy.Network
             {
                 if (success)
                 {
-                    var data = JsonConvert.DeserializeObject<dynamic>(response);
-                    SetAuthToken(data.token.ToString());
-                    callback?.Invoke(true, "登录成功");
+                    try
+                    {
+                        var data = JsonConvert.DeserializeObject<AuthResponse>(response);
+                        SetAuthToken(data.token);
+                        callback?.Invoke(true, "登录成功");
+                    }
+                    catch (System.Exception e)
+                    {
+                        Debug.LogError($"解析登录响应失败: {e.Message}");
+                        callback?.Invoke(false, "解析响应失败");
+                    }
                 }
                 else
                 {
@@ -225,6 +241,17 @@ namespace SanguoStrategy.Network
                 }
             }
         }
+    }
+    
+    /// <summary>
+    /// 认证响应
+    /// </summary>
+    [System.Serializable]
+    public class AuthResponse
+    {
+        public string token;
+        public string user_id;
+        public string username;
     }
 }
 
